@@ -40,6 +40,8 @@ def carregar_dados():
     movies['release_date'] = pd.to_datetime(movies['release_date'], errors='coerce')
     # Extrair o ano
     movies['year'] = movies['release_date'].dt.year
+    #calculo de lucro
+    movies['profit'] = movies['revenue'] - movies['budget']
     
 
     with_budget_df = movies[movies['budget'] > 0]
@@ -89,6 +91,10 @@ st.sidebar.header("Filtros")
 min_year = int(movies['year'].min())
 max_year = int(movies['year'].max())
 
+min_profit = int(movies['profit'].min())
+max_profit = int(movies['profit'].max())
+
+
 
 
 
@@ -104,6 +110,14 @@ year_range = st.sidebar.slider(
 st.sidebar.subheader("Figura 2:")
 ano_escolhido = st.sidebar.selectbox("Selecione o ano:", sorted(movies['year'].unique()))
 genero_escolhido = st.sidebar.multiselect("Seleciona os gêneros:", genres['name'].unique())
+
+profit_range = st.sidebar.slider(
+    "Selecione o intervalo de lucro (em dólares)",
+    min_value=min_profit,
+    max_value=max_profit,
+    value=(min_profit, max_profit),
+    step=1000000
+)
 
 # Primeira linha com duas colunas
 col1, col2 = st.columns([1, 1])
@@ -137,7 +151,7 @@ with col2:
               """)
     
     #calculo do lucro e extração do ano
-    movies['profit'] = movies['revenue'] - movies['budget']
+    
     #anos_disponiveis = sorted(movies['year'].unique())
     
     #Filtros
@@ -163,8 +177,13 @@ with col2:
     movies_expandido = movies_filtrado.explode('genero_lista')
     movies_expandido = movies_expandido[movies_expandido['genero_lista'].isin(genero_escolhido)]
 
+    movies_expandido = movies_expandido[
+    (movies_expandido['profit'] >= profit_range[0]) & 
+    (movies_expandido['profit'] <= profit_range[1])
+]
+
     # Remover filmes com lucro ou valores inválidos
-    df_explodido = movies_expandido.dropna(subset=['profit', 'title', 'vote_average'])
+    movies_explodido = movies_expandido.dropna(subset=['profit', 'title', 'vote_average'])
     #grafico
     fig1 = px.scatter(
         movies_expandido,
