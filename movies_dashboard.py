@@ -40,6 +40,7 @@ def carregar_dados():
     movies['release_date'] = pd.to_datetime(movies['release_date'], errors='coerce')
     # Extrair o ano
     movies['year'] = movies['release_date'].dt.year
+    
 
     with_budget_df = movies[movies['budget'] > 0]
     with_revenue_df = movies[movies['revenue'] > 0]
@@ -88,6 +89,10 @@ st.sidebar.header("Filtros")
 min_year = int(movies['year'].min())
 max_year = int(movies['year'].max())
 
+
+
+
+
 year_range = st.sidebar.slider(
     "Figura 1: Selecione o intervalo de anos",
     min_value=min_year,
@@ -95,6 +100,10 @@ year_range = st.sidebar.slider(
     value=(1900, 2014),
     step=1
 )
+
+st.sidebar.subheader("Figura 2:")
+ano_escolhido = st.sidebar.selectbox("Selecione o ano:", sorted(movies['year'].unique()))
+genero_escolhido = st.sidebar.multiselect("Seleciona os gêneros:", genres['name'].unique())
 
 # Primeira linha com duas colunas
 col1, col2 = st.columns([1, 1])
@@ -120,15 +129,64 @@ with col1:
     )
     st.plotly_chart(fig)
 
+
 with col2:
-    st.subheader("Análise 2")
-    st.write("Conteúdo da Análise 2")
+    st.subheader("(Figura 2) Análise de lucro a partir de gênero e ano")
+    st.write("""Gráfico para visualizar quais gêneros apresentaram
+             maior lucro naquele ano
+              """)
+    
+    #calculo do lucro e extração do ano
+    movies['profit'] = movies['revenue'] - movies['budget']
+    #anos_disponiveis = sorted(movies['year'].unique())
+    
+    #Filtros
+    #ano_escolhido = st.selectbox("Selecione o ano:", movies['year'].unique)
+    #genero_escolhido = st.multiselect("Seleciona os gêneros:", genres['name'].unique())
+
+    #filtrar por ano
+    movies_filtrado = movies[movies['year'] == ano_escolhido].copy()
+
+    #Extrair os nomes dos generos dos filmes(como lista de string)
+    def extract_genres(genre_str):
+        try:
+            genres = eval(genre_str)
+            if isinstance(genres, list):
+                return [g.get('name') for g in genres if isinstance(g, dict)]
+        except:
+            return []
+        return []
+
+    movies_filtrado['genero_lista'] = movies_filtrado['genres'].apply(extract_genres)
+
+    #Expandir para multiplas linhas por genero
+    movies_expandido = movies_filtrado.explode('genero_lista')
+    movies_expandido = movies_expandido[movies_expandido['genero_lista'].isin(genero_escolhido)]
+
+    # Remover filmes com lucro ou valores inválidos
+    df_explodido = movies_expandido.dropna(subset=['profit', 'title', 'vote_average'])
+    #grafico
+    fig1 = px.scatter(
+        movies_expandido,
+        x="vote_average",
+        y="profit",
+        color="genero_lista",
+        hover_data=["title", "profit", "vote_average"],
+        title=f"Lucro dos Filmes por Gênero",
+        labels={"vote_average": "Nota Média", "profit": "Lucro", "genero_lista": "Gênero"},
+        height=600
+    )
+
+    st.plotly_chart(fig1)
+
+
+#-------------------------------------------------------------------------------------------
 
 # Segunda linha com duas colunas
 col3, col4 = st.columns([1, 1])
 with col3:
     st.subheader("Análise 3")
-    st.write("Conteúdo da Análise 3")
+    st.write("""Conteúdo da Análise 3""")
 
 with col4:
     st.subheader("Análise 4")
