@@ -48,6 +48,8 @@ def carregar_dados():
     with_revenue_df = movies[movies['revenue'] > 0]
     with_runtime_df = movies[movies['runtime'].notna()]
     with_overview_df = movies[movies['overview'].notna()]
+
+    
     
     return (
         collections,
@@ -117,6 +119,13 @@ profit_range = st.sidebar.slider(
     max_value=max_profit,
     value=(min_profit, max_profit),
     step=1000000
+)
+
+st.sidebar.subheader("Figura 3:")
+companhias_disponiveis = production_companies['name'].dropna().unique()
+companhias_escolhidas = st.sidebar.multiselect(
+    "Selecione as companhias disponiveis",
+    options = companhias_disponiveis
 )
 
 # Primeira linha com duas colunas
@@ -204,9 +213,39 @@ with col2:
 # Segunda linha com duas colunas
 col3, col4 = st.columns([1, 1])
 with col3:
-    st.subheader("Análise 3")
-    st.write("""Conteúdo da Análise 3""")
+    st.subheader("Análise 3) Comparação de Receita com bilheteria")
+    st.write("""Este gráfico relaciona bilheteria dos filmes com suas avaliações""")
+    #st.write(production_companies_movies.columns.tolist())
 
+
+    # Filtrar companhias escolhidas direto no production_companies_movies, coluna 'name_name'
+    if companhias_escolhidas:
+        filmes_filtrados = production_companies_movies[
+            production_companies_movies['name_name'].isin(companhias_escolhidas)
+        ]
+    else:
+        filmes_filtrados = production_companies_movies.copy()
+
+    # Juntar com filmes para ter receita e avaliação
+    filmes_filtrados = filmes_filtrados.merge(movies, left_on='movie_id', right_on='id', how='left')
+
+# Limpar dados
+    filmes_filtrados = filmes_filtrados.dropna(subset=['revenue', 'vote_average', 'title'])
+    filmes_filtrados = filmes_filtrados[filmes_filtrados['revenue'] > 0]
+
+
+    fig3 = px.scatter(
+        filmes_filtrados,
+        x="vote_average",
+        y="revenue",
+        color="name_name",
+        hover_data=["title", "revenue", "vote_average"],
+        title="Receita vs Avaliação por Companhia",
+        labels={"vote_average": "Nota Média", "revenue": "Receita (Bilheteria)", "name": "Companhia"},
+        height=600
+    )
+
+    st.plotly_chart(fig3)
 with col4:
     st.subheader("Análise 4")
     st.write("Work in Progress")
