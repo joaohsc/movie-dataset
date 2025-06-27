@@ -47,6 +47,7 @@ def carregar_dados():
 
     with_budget_df = movies[movies['budget'] > 0]
     with_revenue_df = movies[movies['revenue'] > 0]
+    with_profit_df = movies[movies['profit'] > 0]
     with_runtime_df = movies[movies['runtime'].notna()]
     with_overview_df = movies[movies['overview'].notna()]
 
@@ -106,6 +107,10 @@ year_range = st.sidebar.slider(
     step=1
 )
 
+genre_select = ['all'] + list(genres['name'].unique())
+
+genero_escolhido = st.sidebar.selectbox("Seleciona os gêneros:", genre_select)
+
 st.sidebar.subheader("Figura 2:")
 ano_padrao = 2014
 # Garante que ele está na lista e pega o índice
@@ -121,6 +126,9 @@ top_ranking = st.sidebar.slider(
     value=(5),
     step=1
 )
+
+choices_f = ['Filmes','Gênero']
+genre_or_movie = st.sidebar.selectbox("Selecione visualização por Gênero ou Filme:", choices_f)
 
 st.sidebar.subheader("Figura 3:")
 
@@ -145,7 +153,10 @@ with col1:
 
     # Filtrar anos entre 1900 e 2014
     df_filter = movies[(movies['year'] >= year_range[0]) & (movies['year'] <= year_range[1])]
-
+    if genero_escolhido != 'all':
+        # Filtra apenas os filmes do gênero selecionado
+        filmes_genero = genres_movies[genres_movies["name_name"] == genero_escolhido]
+        df_filter = movies[movies["id"].isin(filmes_genero["movie_id"])]
     movie_counts = df_filter.groupby('year').size().reset_index(name='qtd')
 
     movie_counts['year'] = pd.to_datetime(movie_counts['year'].astype(str), format='%Y')
@@ -154,15 +165,15 @@ with col1:
         movie_counts, 
         x='year', 
         y=['qtd'],
-        title='Qtd filme X Ano',
+        title=f'Qtd filme X Ano ({genero_escolhido})',
     )
     st.plotly_chart(fig)
 
 
 with col2:
-    st.subheader("2) Análise de lucro a partir de gênero e ano")
-    st.write("""Gráfico para visualizar quais gêneros apresentaram
-             maior lucro naquele ano
+    st.subheader(f"2) Análise de Receita a partir de {genre_or_movie} e ano")
+    st.write(f"""Gráfico para visualizar quais {genre_or_movie} apresentaram
+             maiores receitas em um ano específico. Obs.: o filtro permite ver por filmes ou gêneros.
               """)
     
     #filtrar por ano
@@ -175,23 +186,43 @@ with col2:
 
     filmes_ano = with_revenue_df[(with_revenue_df["year"] == ano_escolhido)]
 
-    df_tmp = pd.merge(genres_movies, filmes_ano, on="movie_id")
-    # Conta quantos gêneros cada filme tem
-    df_tmp["num_generos"] = df_tmp.groupby("movie_id")["name_name"].transform("count")
-    # Receita proporcional por gênero
-    df_tmp["revenue_per_genre"] = df_tmp["revenue"] / df_tmp["num_generos"]
-    # Agrupa por gênero
-    genero_lucro = df_tmp.groupby("name_name")["revenue_per_genre"].sum().reset_index()
-    genero_lucro = genero_lucro.sort_values("revenue_per_genre", ascending=False).head(top_ranking)
+    filmes_lucro = filmes_ano.sort_values("revenue", ascending=False).head(top_ranking)
 
-    chart = alt.Chart(genero_lucro).mark_bar().encode(
-        x=alt.X("revenue_per_genre:Q", title="Receita Total (US$)", axis=alt.Axis(format="$,.0f")),
-        y=alt.Y("name_name:N", title="Gênero", sort="-x"),
-        tooltip=["name_name", "revenue_per_genre"]
+    filmes_long = filmes_lucro.melt(
+        id_vars="title",
+        value_vars=["revenue", "budget"],
+        var_name="Tipo",
+        value_name="Valor"
+    )
+
+    chart = alt.Chart(filmes_long).mark_bar().encode(
+        x=alt.X("Valor:Q", title="Valor (US$)", axis=alt.Axis(format="$,.0f")),
+        y=alt.Y("title:N", title="Título", sort="-x"),
+        color=alt.Color("Tipo:N", title="Tipo"),
+        tooltip=["title", "Tipo", "Valor"]
     ).properties(
-        title=f"Gêneros mais lucrativos em {ano_escolhido}",
+        title=f"Receita x Orçamento dos Filmes mais lucrativos em {ano_escolhido}",
         height=400
     )
+
+    if genre_or_movie == 'Gênero':
+        df_tmp = pd.merge(genres_movies, filmes_ano, on="movie_id")
+        # Conta quantos gêneros cada filme tem
+        df_tmp["num_generos"] = df_tmp.groupby("movie_id")["name_name"].transform("count")
+        # Receita proporcional por gênero
+        df_tmp["revenue_per_genre"] = df_tmp["revenue"] / df_tmp["num_generos"]
+        # Agrupa por gênero
+        genero_lucro = df_tmp.groupby("name_name")["revenue_per_genre"].sum().reset_index()
+        genero_lucro = genero_lucro.sort_values("revenue_per_genre", ascending=False).head(top_ranking)
+    
+        chart = alt.Chart(genero_lucro).mark_bar().encode(
+            x=alt.X("revenue_per_genre:Q", title="Receita Total (US$)", axis=alt.Axis(format="$,.0f")),
+            y=alt.Y("name_name:N", title="Gênero", sort="-x"),
+            tooltip=["name_name", "revenue_per_genre"]
+        ).properties(
+            title=f"Gêneros mais lucrativos em {ano_escolhido}",
+            height=400
+        )
 
     st.altair_chart(chart, use_container_width=True)
 
@@ -201,7 +232,8 @@ with col2:
 col3, col4 = st.columns([1, 1])
 with col3:
     st.subheader(f"3) Comparação de {Coluna} com Avaliações")
-    st.write(f"""Este gráfico relaciona {Coluna} dos filmes com suas avaliações""")
+    st.write(f"""Este gráfico relaciona {Coluna} dos filmes com suas avaliações. Obs.: 
+             o filtro permite ver por orçamento ou receita.""")
     #st.write(production_companies_movies.columns.tolist())
 
 
