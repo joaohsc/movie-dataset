@@ -52,6 +52,7 @@ def carregar_dados():
 
     with_budget_df = movies[movies['budget'] > 0]
     with_revenue_df = movies[movies['revenue'] > 0]
+    with_profit_df = movies[movies['profit'] > 0]
     with_runtime_df = movies[movies['runtime'].notna()]
     with_overview_df = movies[movies['overview'].notna()]
 
@@ -95,6 +96,7 @@ def carregar_dados():
 st.sidebar.header("Filtros")
 
 
+st.sidebar.subheader("Figura 1:")
 
 min_year = int(movies['year'].min())
 max_year = int(movies['year'].max())
@@ -103,8 +105,12 @@ min_profit = int(movies['profit'].min())
 max_profit = int(movies['profit'].max())
 
 
+
+
+
+
 year_range = st.sidebar.slider(
-    "Figura 1: Selecione o intervalo de anos",
+    "Selecione o intervalo de anos",
     min_value=min_year,
     max_value=max_year,
     value=(1900, 2014),
@@ -112,47 +118,37 @@ year_range = st.sidebar.slider(
     key="key_1"
 )
 
+genre_select = ['all'] + list(genres['name'].unique())
+
+genero_escolhido = st.sidebar.selectbox("Seleciona os gêneros:", genre_select)
+
 st.sidebar.subheader("Figura 2:")
-ano_escolhido = st.sidebar.selectbox(
-    "Selecione o ano:", 
-    sorted(movies['year'].unique()), 
-    key="key_2"
-)
-genero_escolhido = st.sidebar.multiselect(
-    "Seleciona os gêneros:", 
-    genres['name'].unique(),
-    key="key_3"
-)
+ano_escolhido = st.sidebar.selectbox("Selecione o ano:", sorted(movies['year'].unique()))
+genero_escolhido = st.sidebar.multiselect("Seleciona os gêneros:", genres['name'].unique())
 
 profit_range = st.sidebar.slider(
     "Selecione o intervalo de lucro (em dólares)",
     min_value=min_profit,
     max_value=max_profit,
     value=(min_profit, max_profit),
-    step=1000000,
-    key="key_4"
+    step=1000000
 )
 
 st.sidebar.subheader("Figura 3:")
+
+choices = ['Orçamento', 'Receita']
+Coluna = st.sidebar.selectbox("Selecione a coluna:", choices)
+
 companhias_disponiveis = production_companies['name'].dropna().unique()
 companhias_escolhidas = st.sidebar.multiselect(
-    "Selecione as companhias disponíveis",
-    options=companhias_disponiveis,
-    key="key_5"
-)
-
-st.sidebar.subheader("Figura 4:")
-genero_escolhidoReg = st.sidebar.multiselect(
-    "Seleciona o gênero:",
-    genres['name'].unique(),
-    max_selections=1,
-    key="key_6"
+    "Selecione as companhias disponiveis",
+    options = companhias_disponiveis
 )
 
 # Primeira linha com duas colunas
 col1, col2 = st.columns([1, 1])
 with col1:
-    st.subheader("Figura 1) Qtd Filmes por Ano")
+    st.subheader("1) Qtd Filmes por Ano")
     st.write("""
         Gráfico temporal para visualizar a evolução de quantidade 
         de filmes ao longo do tempo.
@@ -160,7 +156,10 @@ with col1:
 
     # Filtrar anos entre 1900 e 2014
     df_filter = movies[(movies['year'] >= year_range[0]) & (movies['year'] <= year_range[1])]
-
+    if genero_escolhido != 'all':
+        # Filtra apenas os filmes do gênero selecionado
+        filmes_genero = genres_movies[genres_movies["name_name"] == genero_escolhido]
+        df_filter = movies[movies["id"].isin(filmes_genero["movie_id"])]
     movie_counts = df_filter.groupby('year').size().reset_index(name='qtd')
 
     movie_counts['year'] = pd.to_datetime(movie_counts['year'].astype(str), format='%Y')
@@ -169,73 +168,75 @@ with col1:
         movie_counts, 
         x='year', 
         y=['qtd'],
-        title='Qtd filme X Ano',
+        title=f'Qtd filme X Ano ({genero_escolhido})',
     )
     st.plotly_chart(fig)
 
 
 with col2:
-    st.subheader("(Figura 2) Análise de lucro a partir de gênero e ano")
-    st.write("""Gráfico para visualizar quais gêneros apresentaram
-             maior lucro naquele ano
+    st.subheader(f"2) Análise de Receita a partir de {genre_or_movie} e ano")
+    st.write(f"""Gráfico para visualizar quais {genre_or_movie} apresentaram
+             maiores receitas em um ano específico. Obs.: o filtro permite ver por filmes ou gêneros.
               """)
     
-    #calculo do lucro e extração do ano
-    
-    #anos_disponiveis = sorted(movies['year'].unique())
-    
-    #Filtros
-    #ano_escolhido = st.selectbox("Selecione o ano:", movies['year'].unique)
-    #genero_escolhido = st.multiselect("Seleciona os gêneros:", genres['name'].unique())
-
     #filtrar por ano
-    movies_filtrado = movies[movies['year'] == ano_escolhido].copy()
+    with_revenue_df = with_revenue_df.rename(columns={"id": "movie_id"})
 
-    #Extrair os nomes dos generos dos filmes(como lista de string)
-    def extract_genres(genre_str):
-        try:
-            genres = eval(genre_str)
-            if isinstance(genres, list):
-                return [g.get('name') for g in genres if isinstance(g, dict)]
-        except:
-            return []
-        return []
+    with_revenue_df["release_date"] = pd.to_datetime(with_revenue_df["release_date"], errors="coerce")
 
-    movies_filtrado['genero_lista'] = movies_filtrado['genres'].apply(extract_genres)
+    # 2. Extrai o ano
+    with_revenue_df["year"] = with_revenue_df["release_date"].dt.year
 
-    #Expandir para multiplas linhas por genero
-    movies_expandido = movies_filtrado.explode('genero_lista')
-    movies_expandido = movies_expandido[movies_expandido['genero_lista'].isin(genero_escolhido)]
+    filmes_ano = with_revenue_df[(with_revenue_df["year"] == ano_escolhido)]
 
-    movies_expandido = movies_expandido[
-    (movies_expandido['profit'] >= profit_range[0]) & 
-    (movies_expandido['profit'] <= profit_range[1])
-]
+    filmes_lucro = filmes_ano.sort_values("revenue", ascending=False).head(top_ranking)
 
-    # Remover filmes com lucro ou valores inválidos
-    movies_explodido = movies_expandido.dropna(subset=['profit', 'title', 'vote_average'])
-    #grafico
-    fig1 = px.scatter(
-        movies_expandido,
-        x="vote_average",
-        y="profit",
-        color="genero_lista",
-        hover_data=["title", "profit", "vote_average"],
-        title=f"Lucro dos Filmes por Gênero",
-        labels={"vote_average": "Nota Média", "profit": "Lucro", "genero_lista": "Gênero"},
-        height=600
+    filmes_long = filmes_lucro.melt(
+        id_vars="title",
+        value_vars=["revenue", "budget"],
+        var_name="Tipo",
+        value_name="Valor"
     )
 
-    st.plotly_chart(fig1)
+    chart = alt.Chart(filmes_long).mark_bar().encode(
+        x=alt.X("Valor:Q", title="Valor (US$)", axis=alt.Axis(format="$,.0f")),
+        y=alt.Y("title:N", title="Título", sort="-x"),
+        color=alt.Color("Tipo:N", title="Tipo"),
+        tooltip=["title", "Tipo", "Valor"]
+    ).properties(
+        title=f"Receita x Orçamento dos Filmes mais lucrativos em {ano_escolhido}",
+        height=400
+    )
 
+    if genre_or_movie == 'Gênero':
+        df_tmp = pd.merge(genres_movies, filmes_ano, on="movie_id")
+        # Conta quantos gêneros cada filme tem
+        df_tmp["num_generos"] = df_tmp.groupby("movie_id")["name_name"].transform("count")
+        # Receita proporcional por gênero
+        df_tmp["revenue_per_genre"] = df_tmp["revenue"] / df_tmp["num_generos"]
+        # Agrupa por gênero
+        genero_lucro = df_tmp.groupby("name_name")["revenue_per_genre"].sum().reset_index()
+        genero_lucro = genero_lucro.sort_values("revenue_per_genre", ascending=False).head(top_ranking)
+    
+        chart = alt.Chart(genero_lucro).mark_bar().encode(
+            x=alt.X("revenue_per_genre:Q", title="Receita Total (US$)", axis=alt.Axis(format="$,.0f")),
+            y=alt.Y("name_name:N", title="Gênero", sort="-x"),
+            tooltip=["name_name", "revenue_per_genre"]
+        ).properties(
+            title=f"Gêneros mais lucrativos em {ano_escolhido}",
+            height=400
+        )
+
+    st.altair_chart(chart, use_container_width=True)
 
 #-------------------------------------------------------------------------------------------
 
 # Segunda linha com duas colunas
 col3, col4 = st.columns([1, 1])
 with col3:
-    st.subheader("Análise 3) Comparação de Receita com bilheteria")
-    st.write("""Este gráfico relaciona bilheteria dos filmes com suas avaliações""")
+    st.subheader(f"3) Comparação de {Coluna} com Avaliações")
+    st.write(f"""Este gráfico relaciona {Coluna} dos filmes com suas avaliações. Obs.: 
+             o filtro permite ver por orçamento ou receita.""")
     #st.write(production_companies_movies.columns.tolist())
 
 
@@ -250,19 +251,21 @@ with col3:
     # Juntar com filmes para ter receita e avaliação
     filmes_filtrados = filmes_filtrados.merge(movies, left_on='movie_id', right_on='id', how='left')
 
-# Limpar dados
-    filmes_filtrados = filmes_filtrados.dropna(subset=['revenue', 'vote_average', 'title'])
-    filmes_filtrados = filmes_filtrados[filmes_filtrados['revenue'] > 0]
+    col = "budget"
+    if Coluna == 'Receita':
+        col = 'revenue'
+    filmes_filtrados = filmes_filtrados.dropna(subset=[col, 'vote_average', 'title'])
+    filmes_filtrados = filmes_filtrados[filmes_filtrados[col] > 0]
 
 
     fig2 = px.scatter(
         filmes_filtrados,
         x="vote_average",
-        y="revenue",
+        y=col,
         color="name_name",
-        hover_data=["title", "revenue", "vote_average"],
+        hover_data=["title", col, "vote_average"],
         title="Receita vs Avaliação por Companhia",
-        labels={"vote_average": "Nota Média", "revenue": "Receita (Bilheteria)", "name": "Companhia"},
+        labels={"vote_average": "Nota Média", col: f"{Coluna}", "name": "Companhia"},
         height=600
     )
 
