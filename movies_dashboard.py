@@ -3,6 +3,12 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
+from sklearn.ensemble import RandomForestRegressor
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split, KFold, cross_val_score
+from sklearn.metrics import mean_squared_error, r2_score
+
+
 
 # Configuração da página
 st.set_page_config(
@@ -97,35 +103,50 @@ min_profit = int(movies['profit'].min())
 max_profit = int(movies['profit'].max())
 
 
-
-
-
-
 year_range = st.sidebar.slider(
     "Figura 1: Selecione o intervalo de anos",
     min_value=min_year,
     max_value=max_year,
     value=(1900, 2014),
-    step=1
+    step=1,
+    key="key_1"
 )
 
 st.sidebar.subheader("Figura 2:")
-ano_escolhido = st.sidebar.selectbox("Selecione o ano:", sorted(movies['year'].unique()))
-genero_escolhido = st.sidebar.multiselect("Seleciona os gêneros:", genres['name'].unique())
+ano_escolhido = st.sidebar.selectbox(
+    "Selecione o ano:", 
+    sorted(movies['year'].unique()), 
+    key="key_2"
+)
+genero_escolhido = st.sidebar.multiselect(
+    "Seleciona os gêneros:", 
+    genres['name'].unique(),
+    key="key_3"
+)
 
 profit_range = st.sidebar.slider(
     "Selecione o intervalo de lucro (em dólares)",
     min_value=min_profit,
     max_value=max_profit,
     value=(min_profit, max_profit),
-    step=1000000
+    step=1000000,
+    key="key_4"
 )
 
 st.sidebar.subheader("Figura 3:")
 companhias_disponiveis = production_companies['name'].dropna().unique()
 companhias_escolhidas = st.sidebar.multiselect(
-    "Selecione as companhias disponiveis",
-    options = companhias_disponiveis
+    "Selecione as companhias disponíveis",
+    options=companhias_disponiveis,
+    key="key_5"
+)
+
+st.sidebar.subheader("Figura 4:")
+genero_escolhidoReg = st.sidebar.multiselect(
+    "Seleciona o gênero:",
+    genres['name'].unique(),
+    max_selections=1,
+    key="key_6"
 )
 
 # Primeira linha com duas colunas
@@ -234,7 +255,7 @@ with col3:
     filmes_filtrados = filmes_filtrados[filmes_filtrados['revenue'] > 0]
 
 
-    fig3 = px.scatter(
+    fig2 = px.scatter(
         filmes_filtrados,
         x="vote_average",
         y="revenue",
@@ -245,10 +266,116 @@ with col3:
         height=600
     )
 
-    st.plotly_chart(fig3)
+    st.plotly_chart(fig2)
 with col4:
-    st.subheader("Análise 4")
-    st.write("Work in Progress")
+    st.subheader("Análise 4) Previsão de Receita por gênero")
+    st.write("Esse gráfico utiliza Random Forest Regressor para prever futuras receitas a partir do gênero")
+    
+    # Validação: é necessário escolher apenas 1 gênero
+    if len(genero_escolhidoReg) != 1:
+        st.warning("Por favor, selecione apenas **1 gênero** para esta análise.")
+    
+    else:
+        GEN = genero_escolhidoReg[0]
+
+        # Ajuste do nome da coluna de gênero
+        genres_movies = genres_movies.rename(columns={'name_name': 'genre_name'})
+
+        # Merge usando id (with_revenue_df) e movie_id (genres_movies)
+        df_merged = pd.merge(with_revenue_df, genres_movies, left_on='id', right_on='movie_id')
+
+        # Remove coluna duplicada de ID
+        df_merged.drop(columns=['movie_id'], inplace=True)
+
+        # Filtra pelo gênero selecionado
+        df_genero = df_merged[df_merged['genre_name'] == GEN].copy()
+
+        df_genero['release_date'] = pd.to_datetime(df_genero['release_date'], errors='coerce')
+        df_genero = df_genero.dropna(subset=['release_date'])
+
+        for col in ['budget', 'popularity', 'revenue']:
+            df_genero[col] = pd.to_numeric(df_genero[col], errors='coerce')
+
+        df_genero['year'] = df_genero['release_date'].dt.year
+
+        df_receita_por_ano = df_genero.groupby('year').agg({
+            'revenue': 'sum',
+            'budget': 'mean',
+            'id': 'count',  # usaremos 'id' no lugar de movie_id
+            'popularity': 'mean'
+        }).reset_index()
+
+        df_receita_por_ano.rename(columns={
+            'id': 'num_filmes',
+            'budget': 'orcamento_medio',
+            'popularity': 'popularidade_media'
+        }, inplace=True)
+
+        df_receita_por_ano = df_receita_por_ano[
+            (df_receita_por_ano['year'] >= 1970) & (df_receita_por_ano['year'] < 2017)
+        ]
+
+        # Features e target
+        features = ['year', 'orcamento_medio', 'num_filmes', 'popularidade_media']
+        target = 'revenue'
+
+        X = df_receita_por_ano[features]
+        y = np.log1p(df_receita_por_ano[target])
+
+        # Split e modelo
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+        modelo = RandomForestRegressor(n_estimators=200, random_state=42)
+
+        # Validação cruzada
+        cv = KFold(n_splits=5, shuffle=True, random_state=42)
+        scores = cross_val_score(modelo, X_train, y_train, scoring='neg_root_mean_squared_error', cv=cv)
+
+        modelo.fit(X_train, y_train)
+        y_pred = modelo.predict(X_test)
+        y_pred_real = np.expm1(y_pred)
+        y_test_real = np.expm1(y_test)
+
+        rmse = np.sqrt(mean_squared_error(y_test_real, y_pred_real))
+        r2 = r2_score(y_test_real, y_pred_real)
+
+        st.markdown(f"""
+        **Validação Cruzada (RMSE médio):** {(-scores.mean()):.2f}  
+        **RMSE no teste:** {rmse:.2f}  
+        **R² no teste:** {r2:.2f}
+        """)
+
+        # Previsão para anos
+        anos_futuros = pd.DataFrame({'year': list(range(1970, 2026))})
+        anos_futuros['orcamento_medio'] = df_receita_por_ano['orcamento_medio'].mean()
+        anos_futuros['num_filmes'] = df_receita_por_ano['num_filmes'].mean()
+        anos_futuros['popularidade_media'] = df_receita_por_ano['popularidade_media'].mean()
+
+        X_futuro = anos_futuros[features]
+        anos_futuros['receita_prevista'] = np.expm1(modelo.predict(X_futuro))
+
+        # Gráfico
+        # Usando Plotly Express
+fig4 = px.line(
+    anos_futuros,
+    x='year',
+    y='receita_prevista',
+    title=f'Previsão de Receita – Gênero "{GEN}"',
+    labels={'year': 'Ano', 'receita_prevista': 'Receita Prevista (USD)'},
+    markers=True,
+    height=500
+)
+# Adiciona pontos da receita real
+fig4.add_scatter(
+    x=df_receita_por_ano['year'],
+    y=df_receita_por_ano['revenue'],
+    mode='markers',
+    marker=dict(color='orange'),
+    name='Receita Real'
+)
+
+st.plotly_chart(fig4, use_container_width=True)
+
+
 
 st.markdown("---")
 st.markdown("""
@@ -256,3 +383,5 @@ st.markdown("""
 **Aplicação desenvolvida com:** Streamlit e Plotly  
 **Contexto:** Aula de Ciência de Dados - Visualização Interativa
 """)
+
+
