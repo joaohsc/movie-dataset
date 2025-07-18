@@ -8,6 +8,13 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split, KFold, cross_val_score
 from sklearn.metrics import mean_squared_error, r2_score
+from sentence_transformers import SentenceTransformer
+from sklearn.decomposition import PCA
+from sklearn.cluster import KMeans
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+import matplotlib.colors as mcolors
+
 
 # Configuração da página
 st.set_page_config(
@@ -39,9 +46,9 @@ def carregar_dados():
     spoken_languages = pd.read_csv(f'{base_path}spoken_languages.csv')
 
 
-    # df_kw_completo = pd.read_csv('files/df_kw_completo_limpo.csv')
+    df_kw_completo = pd.read_csv('files/df_kw_completo_limpo.csv')
 
-    # model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
+    model_transformer = SentenceTransformer('files/model/')
 
     movies['budget'] = pd.to_numeric(movies['budget'], errors='coerce').round(2)
     movies['revenue'] = pd.to_numeric(movies['revenue'], errors='coerce').round(2)
@@ -80,7 +87,10 @@ def carregar_dados():
         with_revenue_df,
         with_runtime_df,
         with_overview_df,
-        revenue_genres_merged_df
+        revenue_genres_merged_df,
+        df_kw_completo,
+        model_transformer
+
     )
 
 (
@@ -98,8 +108,15 @@ def carregar_dados():
     with_revenue_df,
     with_runtime_df,
     with_overview_df,
-    revenue_genres_merged_df
+    revenue_genres_merged_df,
+    df_kw_completo,
+    model_transformer
 ) = carregar_dados()
+
+     
+def gerar_cores_hex(n):
+    colormap = cm.get_cmap('hsv', n)
+    return [mcolors.to_hex(colormap(i)) for i in range(n)]
 
 # Sidebar para filtros
 st.sidebar.header("Filtros")
@@ -132,7 +149,6 @@ ano_padrao = 2014
 anos = sorted(movies['year'].unique())
 index_padrao = anos.index(ano_padrao) if ano_padrao in anos else 0
 ano_escolhido = st.sidebar.selectbox("Selecione o ano:", anos,index=index_padrao)
-#genero_escolhido = st.sidebar.multiselect("Seleciona os gêneros:", genres['name'].unique())
 
 top_ranking = st.sidebar.slider(
     "Selecione o Top N gêneros",
@@ -162,6 +178,13 @@ genero_escolhidoReg = st.sidebar.selectbox(
     "Seleciona os gêneros:",
     genres['name'].unique(),
     key="year_slider_6"  # <-- chave diferente
+)
+
+st.sidebar.subheader("Figura 5:")
+genero_escolhido_RL= st.sidebar.selectbox(
+    "Seleciona os gêneros:",
+    genres['name'].unique(),
+    key="genre_slider_RL" 
 )
 
 # Primeira linha com duas colunas
@@ -256,8 +279,6 @@ with col3:
     st.subheader(f"3) Comparação de {Coluna} com Avaliações")
     st.write(f"""Este gráfico relaciona {Coluna} dos filmes com suas avaliações. Obs.: 
              o filtro permite ver por orçamento ou receita.""")
-    #st.write(production_companies_movies.columns.tolist())
-
 
     # Filtrar companhias escolhidas direto no production_companies_movies, coluna 'name_name'
     if companhias_escolhidas:
@@ -422,14 +443,15 @@ with col5:
     st.subheader("Análise 5) Previsão de Receita por gênero (Regressão Linear)")
     st.write("Esse gráfico utiliza Regressão Linear para prever futuras receitas a partir do gênero")
     
-    genresRL = 'ALL'    
-    if genresRL == 'ALL':
+    if genero_escolhido_RL == 'ALL':
         filtered_rev_df = revenue_genres_merged_df
     else:
-        filtered_rev_df = revenue_genres_merged_df[df_merged['genre_name'] == genresRL]
+        filtered_rev_df = revenue_genres_merged_df[df_merged['genre_name'] == genero_escolhido_RL]
 
     df_revenue_year = filtered_rev_df.groupby('year')['revenue'].sum().reset_index()
-    df_revenue_year = df_revenue_year[(df_revenue_year['year'] >= 2000) & (df_revenue_year['year'] < 2017)]
+    first_year = 1970
+    last_year = 2025
+    df_revenue_year = df_revenue_year[(df_revenue_year['year'] >= first_year) & (df_revenue_year['year'] < 2017)]
 
     y = df_revenue_year['revenue'].to_numpy()
     x = df_revenue_year['year'].to_numpy()
@@ -451,7 +473,7 @@ with col5:
     def func_preditiva(x):
         return modelo.intercept_ + modelo.coef_*(x)
     
-    years = np.array(range(2000, 2025))
+    years = np.array(range(first_year, last_year))
 
     # Gera a receita prevista com sua função preditiva
     df_previsao = pd.DataFrame({
@@ -474,7 +496,7 @@ with col5:
         y='revenue',
         color='tipo',
         markers=True,
-        title='Soma das receitas de Filmes por Ano (geral)',
+        title=f'Previsão de Receita para Filmes do Gênero "{genero_escolhido_RL}" ({first_year}–{last_year})',
         labels={
             'year': 'Ano',
             'revenue': 'Receita Total',
@@ -493,8 +515,130 @@ with col5:
 col6, = st.columns([1])
 with col6:
     st.subheader("Análise 6) Clusterização kmeans + pca")
-    st.write("Esse gráfico utiliza Regressão Linear para prever futuras receitas a partir do gênero")
+    st.write("Agrupamento de filmes feito com kmeans com base no conteúdo das suas palavras chaves e gênerp")
     
+    num_clusters = st.number_input(
+            "Escolha o número do clusters:",
+            min_value=2,
+            max_value=500,
+            value = 80,
+            step=1
+        )
+    
+    n_linhas_kmeans = st.number_input(
+            "Escolha o número doe linhas do DF:",
+            min_value=100,
+            max_value=int(len(df_kw_completo)),
+            value = 5000,
+            step=1
+        )
+    
+    df_kw_completo = df_kw_completo.head(n_linhas_kmeans).copy()
+    
+    if 'concat_kw_genres' not in df_kw_completo.columns:
+        st.error("A coluna 'concat_kw_genres' não foi encontrada no arquivo.")
+    else:
+        embeddings = []
+        with st.spinner("Carregando modelo e gerando embeddings..."):
+            embeddings = model_transformer.encode(df_kw_completo['concat_kw_genres'].astype(str).tolist(), show_progress_bar=True)
+
+        pca = PCA(n_components=2)
+        X_pca = pca.fit_transform(embeddings)
+
+
+        # Seleção do número de clusters
+        
+
+        # Aplicar KMeans diretamente nos dados PCA(2D)
+        kmeans = KMeans(n_clusters=num_clusters, random_state=42)
+        labels = kmeans.fit_predict(X_pca)
+
+        # Adicionar clusters e componentes ao DataFrame
+        df_kw_completo['cluster'] = labels
+        df_kw_completo['pc1'] = X_pca[:, 0]
+        df_kw_completo['pc2'] = X_pca[:, 1]
+
+
+        # Gráfico interativo com Plotly
+        st.subheader("Visualização dos Clusters (PCA + kMeans)")
+        
+        n_clusters = df_kw_completo['cluster'].nunique()
+        cores_personalizadas = gerar_cores_hex(n_clusters)
+
+        fig = px.scatter(
+            df_kw_completo,
+            x="pc1",
+            y="pc2",
+            color=df_kw_completo["cluster"].astype(str),  # importante converter para string
+            color_discrete_sequence=cores_personalizadas,
+            hover_data=["title"],
+            title="Clusters visualizados com PCA (2D)",
+            width=900,
+            height=600
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Interface para o usuário escolher o cluster
+        st.subheader("Explorar Filmes por Cluster")
+        cluster_selecionado = st.number_input(
+            "Escolha o número do cluster que deseja explorar:",
+            min_value=0,
+            max_value=df_kw_completo['cluster'].max(),
+            value = 2,
+            step=1
+        )
+
+        # Filtrar os filmes do cluster escolhido
+        filmes_do_cluster = df_kw_completo[df_kw_completo['cluster'] == cluster_selecionado]
+
+        # Mostrar quantidade e lista
+        st.write(f"{len(filmes_do_cluster)} filmes encontrados no cluster {cluster_selecionado}:")
+        for idx, row in filmes_do_cluster.iterrows():
+            st.markdown(f"- **{row.get('title', 'Título não disponível')} ({row.get('generos_concatenados', 'Título não disponível')})** — {row.get('keywords', '')}")
+col7, = st.columns([1])
+with col7:
+    st.subheader("Análise 7) Visualização dos Clusters kmeans(sem PCA)")
+    st.write("Agrupamento de filmes feito com kmeans com base no conteúdo das suas palavras chaves e gênerp")
+    
+    df_kw_completo = df_kw_completo.head(n_linhas_kmeans).copy()
+    
+    if 'concat_kw_genres' not in df_kw_completo.columns:
+        st.error("A coluna 'concat_kw_genres' não foi encontrada no arquivo.")
+    else:
+        embeddings = []
+
+        with st.spinner("Carregando modelo e gerando embeddings..."):
+            embeddings = model_transformer.encode(df_kw_completo['concat_kw_genres'].astype(str).tolist(), show_progress_bar=True)
+
+        # Aplicar KMeans diretamente nos dados PCA(2D)
+        kmeans = KMeans(n_clusters=num_clusters, random_state=42)
+        labels = kmeans.fit_predict(embeddings)
+
+        # Adicionar clusters e componentes ao DataFrame
+        df_kw_completo['cluster'] = labels
+        
+        n_clusters = df_kw_completo['cluster'].nunique()
+  
+        # Interface para o usuário escolher o cluster
+        st.subheader("Explorar Filmes por Cluster")
+        cluster_selecionado_spca = st.number_input(
+            "Escolha o número do cluster que deseja explorar:",
+            min_value=0,
+            max_value=df_kw_completo['cluster'].max(),
+            value = 6,
+            step=1,
+            key="cluster_selector_kmeans"
+        )
+
+        # Filmes do cluster selecionado
+        filmes_do_cluster = df_kw_completo[df_kw_completo['cluster'] == cluster_selecionado_spca]
+        st.write(f"{len(filmes_do_cluster)} filmes encontrados no cluster {cluster_selecionado_spca}:")
+
+        for _, row in filmes_do_cluster.iterrows():
+            titulo = row.get('title', 'Título não disponível')
+            generos = row.get('generos_concatenados', '')
+            keywords = row.get('keywords', '')
+            st.markdown(f"- **{titulo} ({generos})** — {keywords}")
 
 st.markdown("---")
 st.markdown("""
