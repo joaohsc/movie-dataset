@@ -356,7 +356,7 @@ with col4:
     r2 = r2_score(y_test_real, y_pred_real)
 
     st.markdown(f"""
-    *Validação Cruzada (RMSE médio):* {(-scores.mean()):.2f}  
+    
     *RMSE no teste:* {rmse:.2f}  
     *R² no teste:* {r2:.2f}
     """)
