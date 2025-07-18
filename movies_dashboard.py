@@ -107,7 +107,8 @@ year_range = st.sidebar.slider(
     min_value=min_year,
     max_value=max_year,
     value=(1900, 2014),
-    step=1
+    step=1,
+    key="key_1"
 )
 
 genre_select = ['all'] + list(genres['name'].unique())
@@ -152,7 +153,6 @@ genero_escolhidoReg = st.sidebar.selectbox(
     key="year_slider_6"  # <-- chave diferente
 )
 
-print(genero_escolhidoReg)
 # Primeira linha com duas colunas
 col1, col2 = st.columns([1, 1])
 with col1:
@@ -292,10 +292,6 @@ with col4:
     # Merge usando id (with_revenue_df) e movie_id (genres_movies)
     df_merged = pd.merge(with_revenue_df, genres_movies, left_on='movie_id', right_on='movie_id')
 
-    # Remove coluna duplicada de ID
-    #df_merged.drop(columns=['movie_id'], inplace=True)
-    print(df_merged)
-
     # Filtra pelo gênero selecionado
     df_genero = df_merged[df_merged['genre_name'] == GEN].copy()
 
@@ -390,3 +386,5 @@ st.markdown("""
 **Aplicação desenvolvida com:** Streamlit e Plotly  
 **Contexto:** Aula de Ciência de Dados - Visualização Interativa
 """)
+
+
