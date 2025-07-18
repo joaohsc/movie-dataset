@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 import numpy as np
 import altair as alt
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split, KFold, cross_val_score
 from sklearn.metrics import mean_squared_error, r2_score
 
@@ -351,34 +352,59 @@ with col4:
 
     # Previsão para anos
     anos_futuros = pd.DataFrame({'year': list(range(1970, 2026))})
-    anos_futuros['orcamento_medio'] = df_receita_por_ano['orcamento_medio'].mean()
-    anos_futuros['num_filmes'] = df_receita_por_ano['num_filmes'].mean()
-    anos_futuros['popularidade_media'] = df_receita_por_ano['popularidade_media'].mean()
 
+    # Função para estimar tendência linear
+    def prever_tendencia(col):
+        modelo_lin = LinearRegression()
+        X_ano = df_receita_por_ano[['year']]
+        y_col = df_receita_por_ano[col]
+        modelo_lin.fit(X_ano, y_col)
+        return modelo_lin.predict(anos_futuros[['year']])
+
+    # Aplica projeções lineares
+    anos_futuros['orcamento_medio'] = prever_tendencia('orcamento_medio')
+    anos_futuros['num_filmes'] = prever_tendencia('num_filmes')
+    anos_futuros['popularidade_media'] = prever_tendencia('popularidade_media')
+
+    #Previsão
     X_futuro = anos_futuros[features]
     anos_futuros['receita_prevista'] = np.expm1(modelo.predict(X_futuro))
 
     # Gráfico
     # Usando Plotly Express
-    fig4 = px.line(
-        anos_futuros,
-        x='year',
-        y='receita_prevista',
-        title=f'Previsão de Receita – Gênero "{GEN}"',
-        labels={'year': 'Ano', 'receita_prevista': 'Receita Prevista (USD)'},
-        markers=True,
-        height=500
-    )
-    # Adiciona pontos da receita real
-    fig4.add_scatter(
-        x=df_receita_por_ano['year'],
-        y=df_receita_por_ano['revenue'],
-        mode='markers',
-        marker=dict(color='orange'),
-        name='Receita Real'
-    )
+    
+fig4 = px.line(
+    anos_futuros,
+    x='year',
+    y='receita_prevista',
+    title=f'Previsão de Receita para Filmes do Gênero \"{GEN}\" (1970–2025)',
+    labels={'year': 'Ano', 'receita_prevista': 'Receita Total (USD)'},
+    markers=True,
+    height=500
+)
 
-    st.plotly_chart(fig4, use_container_width=True)
+fig4.add_scatter(
+    x=df_receita_por_ano['year'],
+    y=df_receita_por_ano['revenue'],
+    mode='markers',
+    marker=dict(color='orange', size=8),
+    name='Receita Real'
+)
+
+fig4.update_layout(
+    xaxis_title='Ano',
+    yaxis_title='Receita Total (USD)',
+    legend=dict(font=dict(size=12)),
+    xaxis=dict(tickangle=45),
+    #plot_bgcolor='white',
+    hovermode='x unified',
+    margin=dict(l=40, r=40, t=60, b=40)
+)
+
+fig4.update_xaxes(showgrid=True, gridwidth=1, gridcolor='lightgray')
+fig4.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgray')
+
+st.plotly_chart(fig4, use_container_width=True)
 
 st.markdown("---")
 st.markdown("""
