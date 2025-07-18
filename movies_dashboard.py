@@ -373,38 +373,38 @@ with col4:
     # Gráfico
     # Usando Plotly Express
     
-fig4 = px.line(
-    anos_futuros,
-    x='year',
-    y='receita_prevista',
-    title=f'Previsão de Receita para Filmes do Gênero \"{GEN}\" (1970–2025)',
-    labels={'year': 'Ano', 'receita_prevista': 'Receita Total (USD)'},
-    markers=True,
-    height=500
-)
+    fig4 = px.line(
+        anos_futuros,
+        x='year',
+        y='receita_prevista',
+        title=f'Previsão de Receita para Filmes do Gênero \"{GEN}\" (1970–2025)',
+        labels={'year': 'Ano', 'receita_prevista': 'Receita Total (USD)'},
+        markers=True,
+        height=500
+    )
 
-fig4.add_scatter(
-    x=df_receita_por_ano['year'],
-    y=df_receita_por_ano['revenue'],
-    mode='markers',
-    marker=dict(color='orange', size=8),
-    name='Receita Real'
-)
+    fig4.add_scatter(
+        x=df_receita_por_ano['year'],
+        y=df_receita_por_ano['revenue'],
+        mode='markers',
+        marker=dict(color='orange', size=8),
+        name='Receita Real'
+    )
 
-fig4.update_layout(
-    xaxis_title='Ano',
-    yaxis_title='Receita Total (USD)',
-    legend=dict(font=dict(size=12)),
-    xaxis=dict(tickangle=45),
-    #plot_bgcolor='white',
-    hovermode='x unified',
-    margin=dict(l=40, r=40, t=60, b=40)
-)
+    fig4.update_layout(
+        xaxis_title='Ano',
+        yaxis_title='Receita Total (USD)',
+        legend=dict(font=dict(size=12)),
+        xaxis=dict(tickangle=45),
+        #plot_bgcolor='white',
+        hovermode='x unified',
+        margin=dict(l=40, r=40, t=60, b=40)
+    )
 
-fig4.update_xaxes(showgrid=True, gridwidth=1, gridcolor='lightgray')
-fig4.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgray')
+    fig4.update_xaxes(showgrid=True, gridwidth=1, gridcolor='lightgray')
+    fig4.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgray')
 
-st.plotly_chart(fig4, use_container_width=True)
+    st.plotly_chart(fig4, use_container_width=True)
 
 st.markdown("---")
 st.markdown("""
