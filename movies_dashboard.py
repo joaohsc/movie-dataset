@@ -38,6 +38,11 @@ def carregar_dados():
     spoken_languages_movies = pd.read_csv(f'{base_path}spoken_languages_movies.csv')
     spoken_languages = pd.read_csv(f'{base_path}spoken_languages.csv')
 
+
+    # df_kw_completo = pd.read_csv('files/df_kw_completo_limpo.csv')
+
+    # model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
+
     movies['budget'] = pd.to_numeric(movies['budget'], errors='coerce').round(2)
     movies['revenue'] = pd.to_numeric(movies['revenue'], errors='coerce').round(2)
 
@@ -55,8 +60,11 @@ def carregar_dados():
     with_runtime_df = movies[movies['runtime'].notna()]
     with_overview_df = movies[movies['overview'].notna()]
 
-    
-    
+    with_revenue_df = with_revenue_df.rename(columns={"id": "movie_id"})
+    revenue_genres_merged_df = pd.merge(with_revenue_df, genres_movies, left_on='movie_id', right_on='movie_id')
+    revenue_genres_merged_df = revenue_genres_merged_df[['release_date', 'revenue']]
+    revenue_genres_merged_df['year'] = pd.to_datetime(revenue_genres_merged_df['release_date']).dt.year
+
     return (
         collections,
         countries_movies,
@@ -71,7 +79,8 @@ def carregar_dados():
         with_budget_df,
         with_revenue_df,
         with_runtime_df,
-        with_overview_df
+        with_overview_df,
+        revenue_genres_merged_df
     )
 
 (
@@ -88,7 +97,8 @@ def carregar_dados():
     with_budget_df,
     with_revenue_df,
     with_runtime_df,
-    with_overview_df
+    with_overview_df,
+    revenue_genres_merged_df
 ) = carregar_dados()
 
 # Sidebar para filtros
@@ -241,7 +251,7 @@ with col2:
 #-------------------------------------------------------------------------------------------
 
 # Segunda linha com duas colunas
-col3, col4 = st.columns([1, 1])
+col3, = st.columns([1])
 with col3:
     st.subheader(f"3) Comparação de {Coluna} com Avaliações")
     st.write(f"""Este gráfico relaciona {Coluna} dos filmes com suas avaliações. Obs.: 
@@ -279,8 +289,9 @@ with col3:
     )
 
     st.plotly_chart(fig3)
+col4, = st.columns([1])
 with col4:
-    st.subheader("Análise 4) Previsão de Receita por gênero")
+    st.subheader("Análise 4) Previsão de Receita por gênero (Random Forest Regression)")
     st.write("Esse gráfico utiliza Random Forest Regressor para prever futuras receitas a partir do gênero")
     
     # Validação: é necessário escolher apenas 1 gênero
@@ -405,6 +416,85 @@ with col4:
     fig4.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgray')
 
     st.plotly_chart(fig4, use_container_width=True)
+
+col5, = st.columns([1])
+with col5:
+    st.subheader("Análise 5) Previsão de Receita por gênero (Regressão Linear)")
+    st.write("Esse gráfico utiliza Regressão Linear para prever futuras receitas a partir do gênero")
+    
+    genresRL = 'ALL'    
+    if genresRL == 'ALL':
+        filtered_rev_df = revenue_genres_merged_df
+    else:
+        filtered_rev_df = revenue_genres_merged_df[df_merged['genre_name'] == genresRL]
+
+    df_revenue_year = filtered_rev_df.groupby('year')['revenue'].sum().reset_index()
+    df_revenue_year = df_revenue_year[(df_revenue_year['year'] >= 2000) & (df_revenue_year['year'] < 2017)]
+
+    y = df_revenue_year['revenue'].to_numpy()
+    x = df_revenue_year['year'].to_numpy()
+
+    x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.3, random_state=42)
+
+    modelo = LinearRegression()
+    modelo.fit(x_train.reshape(-1,1), y_train)
+
+    print(f"R quadrado = {modelo.score(x_train.reshape(-1,1),y_train)}")
+
+    y_predict = modelo.predict(x_test.reshape(-1,1))
+
+    print(f"R quadrado = {r2_score(y_test, y_predict)}")
+
+    eqm = mean_squared_error(y_test, y_predict)
+    print(f"EQM = {eqm}")
+
+    def func_preditiva(x):
+        return modelo.intercept_ + modelo.coef_*(x)
+    
+    years = np.array(range(2000, 2025))
+
+    # Gera a receita prevista com sua função preditiva
+    df_previsao = pd.DataFrame({
+        'year': years,
+        'revenue': func_preditiva(years),
+        'tipo': 'Previsão'
+    })
+
+    # Marca os dados reais
+    df_real = df_revenue_year.copy()
+    df_real['tipo'] = 'Real'
+
+    # Junta os dois DataFrames
+    df_plot = pd.concat([df_real, df_previsao])
+
+    # Cria o gráfico
+    fig = px.line(
+        df_plot,
+        x='year',
+        y='revenue',
+        color='tipo',
+        markers=True,
+        title='Soma das receitas de Filmes por Ano (geral)',
+        labels={
+            'year': 'Ano',
+            'revenue': 'Receita Total',
+            'tipo': 'Tipo de dado'
+        }
+    )
+
+    fig.update_layout(
+        xaxis=dict(tickangle=45),
+        template="plotly_white"
+    )
+
+    # Mostra no Streamlit
+    st.plotly_chart(fig, use_container_width=True)
+
+col6, = st.columns([1])
+with col6:
+    st.subheader("Análise 6) Clusterização kmeans + pca")
+    st.write("Esse gráfico utiliza Regressão Linear para prever futuras receitas a partir do gênero")
+    
 
 st.markdown("---")
 st.markdown("""
